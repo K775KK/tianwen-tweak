@@ -22,7 +22,6 @@ jobs:
           -miphoneos-version-min=14.0 \
           -dynamiclib \
           -framework Foundation \
-          -framework UIKit \
           -fobjc-arc \
           -w \
           -x objective-c \
