@@ -14,6 +14,7 @@
 
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
+#include <dlfcn.h>
 
 #define LOG(fmt, ...) NSLog(@"[TianwenTweak] " fmt, ##__VA_ARGS__)
 
@@ -217,7 +218,8 @@ static void tweak_init(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         BOOL ok = patchTianwen1();
-        LOG(ok ? "Tianwen1: patched OK" : "Tianwen1: class not found");
+        if (ok) LOG("Tianwen1: patched OK");
+        else LOG("Tianwen1: class not found");
     });
 
     // Phase 2: Hook Tianwen2 + fallback (1.5s delay)
