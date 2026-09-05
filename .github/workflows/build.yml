@@ -1,4 +1,4 @@
-name: Test
+name: Build TianwenTweak
 
 on:
   push:
@@ -6,7 +6,42 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  build:
     runs-on: macos-latest
     steps:
-    - run: echo "hello"
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: List available SDKs
+      run: |
+        echo "=== Xcode ==="
+        xcodebuild -version
+        echo "=== iOS SDKs ==="
+        xcrun --sdk iphoneos --show-sdk-path
+        xcrun --sdk iphoneos --show-sdk-version
+
+    - name: Compile
+      run: |
+        SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+        echo "SDK: $SDK"
+        
+        clang -arch arm64 \
+          -isysroot "$SDK" \
+          -miphoneos-version-min=14.0 \
+          -dynamiclib \
+          -framework Foundation \
+          -fobjc-arc \
+          -w \
+          -o TianwenTweak.dylib \
+          tweak/tweak.x
+        
+        echo "=== Result ==="
+        file TianwenTweak.dylib
+        ls -la TianwenTweak.dylib
+
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: TianwenTweak
+        path: TianwenTweak.dylib
+        retention-days: 30
