@@ -1,4 +1,4 @@
-name: Build TianwenTweak
+name: Test
 
 on:
   push:
@@ -6,54 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  test:
     runs-on: macos-latest
-
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Debug environment
-      run: |
-        echo "=== 系统信息 ==="
-        sw_vers
-        uname -m
-        echo "=== Xcode 版本 ==="
-        xcodebuild -version 2>&1 || echo "xcodebuild not found"
-        echo "=== clang 版本 ==="
-        clang --version
-        echo "=== iOS SDK 路径 ==="
-        xcrun --sdk iphoneos --show-sdk-path 2>&1 || echo "iphoneos SDK not found"
-        echo "=== 可用 SDK ==="
-        xcrun --sdk iphoneos --show-sdk-version 2>&1 || echo "N/A"
-
-    - name: Compile TianwenTweak.dylib
-      run: |
-        echo "=== 开始编译 ==="
-        
-        # 获取 iOS SDK 路径
-        SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-        echo "SDK: $SDK"
-        
-        # 编译
-        clang -arch arm64 \
-          -isysroot "$SDK" \
-          -miphoneos-version-min=14.0 \
-          -dynamiclib \
-          -framework Foundation \
-          -fobjc-arc \
-          -O2 \
-          -w \
-          -o TianwenTweak.dylib \
-          tweak/tweak.x
-        
-        echo "=== 编译结果 ==="
-        file TianwenTweak.dylib
-        ls -la TianwenTweak.dylib
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: TianwenTweak
-        path: TianwenTweak.dylib
-        retention-days: 30
+    - run: echo "hello"
