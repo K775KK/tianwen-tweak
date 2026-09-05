@@ -1,6 +1,8 @@
 /**
  * tweak.x — 天问1 + 天问2 弹窗阻断 + 悬浮球创建补丁
  *
+ * v2.0 - 增加 UIAlertController 全局拦截
+ *
  * 编译方法：
  *   macOS: export THEOS=~/theos && cd tweak && make package FINALPACKAGE=1
  *   Windows: 用 GitHub Actions 自动编译（见 .github/workflows/build.yml）
@@ -11,6 +13,7 @@
  */
 
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #include <dlfcn.h>
 
@@ -31,6 +34,17 @@ static IMP orig_refreshConfig_IMP   = NULL;
 static IMP orig_showErrorAlert_IMP = NULL;
 
 // =====================================================================
+// UIAlertController 拦截
+// =====================================================================
+static IMP orig_alertControllerWithAlertStyle_IMP = NULL;
+static IMP orig_presentViewController_IMP = NULL;
+
+// =====================================================================
+// 需要拦截的关键词
+// =====================================================================
+static NSArray<NSString *> *kBlockedKeywords = nil;
+
+// =====================================================================
 // 发送验证成功通知（创建悬浮球）
 // =====================================================================
 static void postVerifiedNotification(void) {
@@ -47,7 +61,7 @@ static void postVerifiedNotification(void) {
 // Hook 实现：showVerifyAlertIfNeeded（天问1）
 // =====================================================================
 static void hooked_showVerifyAlert(id self, SEL _cmd) {
-    LOG("showVerifyAlertIfNeeded 被调用 → 已阻止");
+    LOG("showVerifyAlertIfNeeded 被调用 -> 已阻止");
     // 直接不调用原函数 = 阻止弹窗
 }
 
@@ -55,7 +69,7 @@ static void hooked_showVerifyAlert(id self, SEL _cmd) {
 // Hook 实现：refreshConfigAndShowVerifyAlertIfNeeded（天问1）
 // =====================================================================
 static void hooked_refreshConfig(id self, SEL _cmd) {
-    LOG("refreshConfigAndShowVerifyAlertIfNeeded 被调用 → 已阻止");
+    LOG("refreshConfigAndShowVerifyAlertIfNeeded 被调用 -> 已阻止");
     // 直接不调用原函数 = 阻止弹窗
 }
 
@@ -63,8 +77,71 @@ static void hooked_refreshConfig(id self, SEL _cmd) {
 // Hook 实现：showErrorAlert:（天问2 兜底）
 // =====================================================================
 static void hooked_showErrorAlert(id self, SEL _cmd, id arg) {
-    LOG("天问2 showErrorAlert: 被调用 → 已阻止");
+    LOG("天问2 showErrorAlert: 被调用 -> 已阻止");
     // 直接不调用原函数 = 阻止弹窗
+}
+
+// =====================================================================
+// Hook 实现：UIAlertController alertControllerWithTitle:
+//   拦截所有创建的 alert，过滤验证相关消息
+// =====================================================================
+static id hooked_alertControllerWithTitle(id self, SEL _cmd, 
+                                           NSString *title, 
+                                           NSString *message, 
+                                           NSInteger preferredStyle) {
+    // 检查标题和消息是否包含被拦截的关键词
+    NSString *textToCheck = [NSString stringWithFormat:@"%@ %@", 
+                             title ?: @"", message ?: @""];
+    
+    for (NSString *keyword in kBlockedKeywords) {
+        if ([textToCheck containsString:keyword]) {
+            LOG("UIAlertController 被拦截: title='%@' message='%@' (包含 '%@')", 
+                title, message, keyword);
+            // 返回一个空的 alert controller，或者返回 nil
+            // 返回 nil 可能导致崩溃，所以我们返回一个空的
+            UIAlertController *fake = [UIAlertController 
+                alertControllerWithTitle:nil 
+                message:nil 
+                preferredStyle:UIAlertControllerStyleActionSheet];
+            return fake;
+        }
+    }
+    
+    // 不是验证相关的 alert，正常创建
+    return [[self class] alertControllerWithTitle:title 
+                                         message:message 
+                                  preferredStyle:preferredStyle];
+}
+
+// =====================================================================
+// Hook 实现：UIViewController presentViewController:
+//   拦截所有显示的 alert，过滤验证相关消息
+// =====================================================================
+static void hooked_presentViewController(id self, SEL _cmd, 
+                                          UIViewController *viewController,
+                                          BOOL animated, 
+                                          void (^completion)(void)) {
+    // 检查是否是 UIAlertController
+    if ([viewController isKindOfClass:[UIAlertController class]]) {
+        UIAlertController *alert = (UIAlertController *)viewController;
+        NSString *textToCheck = [NSString stringWithFormat:@"%@ %@", 
+                                 alert.title ?: @"", alert.message ?: @""];
+        
+        for (NSString *keyword in kBlockedKeywords) {
+            if ([textToCheck containsString:keyword]) {
+                LOG("UIViewController present 被拦截: title='%@' message='%@' (包含 '%@')", 
+                    alert.title, alert.message, keyword);
+                return; // 不显示
+            }
+        }
+    }
+    
+    // 不是验证相关的 alert，正常显示
+    if (completion) {
+        [self presentViewController:viewController animated:animated completion:completion];
+    } else {
+        [self presentViewController:viewController animated:animated completion:nil];
+    }
 }
 
 // =====================================================================
@@ -90,7 +167,7 @@ static BOOL patchTianwen1(void) {
             if (m1) {
                 orig_showVerifyAlert_IMP = method_getImplementation(m1);
                 method_setImplementation(m1, (IMP)hooked_showVerifyAlert);
-                LOG("✓ Hook showVerifyAlertIfNeeded");
+                LOG("V Hook showVerifyAlertIfNeeded");
                 found = YES;
             }
 
@@ -100,7 +177,7 @@ static BOOL patchTianwen1(void) {
             if (m2) {
                 orig_refreshConfig_IMP = method_getImplementation(m2);
                 method_setImplementation(m2, (IMP)hooked_refreshConfig);
-                LOG("✓ Hook refreshConfigAndShowVerifyAlertIfNeeded");
+                LOG("V Hook refreshConfigAndShowVerifyAlertIfNeeded");
                 found = YES;
             }
 
@@ -149,7 +226,7 @@ static BOOL patchTianwen2(void) {
             if (method) {
                 orig_showErrorAlert_IMP = method_getImplementation(method);
                 method_setImplementation(method, (IMP)hooked_showErrorAlert);
-                LOG("✓ Hook %s showErrorAlert:", name);
+                LOG("V Hook %s showErrorAlert:", name);
                 found = YES;
             }
 
@@ -233,7 +310,7 @@ static void hookAllShowErrorAlert(void) {
                     [libPath containsString:@"Vacm"]) {
                     method_setImplementation(method, (IMP)hooked_showErrorAlert);
                     hookedCount++;
-                    LOG("  ✓ Hook %s showErrorAlert: (来自 %s)", name, info.dli_fname);
+                    LOG("  V Hook %s showErrorAlert: (来自 %s)", name, info.dli_fname);
                 }
             }
         }
@@ -241,6 +318,31 @@ static void hookAllShowErrorAlert(void) {
 
     free(classes);
     LOG("共 Hook %d 个 showErrorAlert:", hookedCount);
+}
+
+// =====================================================================
+// Hook UIAlertController（全局拦截验证相关弹窗）
+// =====================================================================
+static void hookUIAlertController(void) {
+    LOG("Hook UIAlertController 全局拦截...");
+    
+    // Hook alertControllerWithTitle:message:preferredStyle:
+    Method m1 = class_getClassMethod([UIAlertController class], 
+        @selector(alertControllerWithTitle:message:preferredStyle:));
+    if (m1) {
+        orig_alertControllerWithAlertStyle_IMP = method_getImplementation(m1);
+        method_setImplementation(m1, (IMP)hooked_alertControllerWithTitle);
+        LOG("V Hook alertControllerWithTitle:message:preferredStyle:");
+    }
+    
+    // Hook presentViewController:animated:completion:
+    Method m2 = class_getInstanceMethod([UIViewController class], 
+        @selector(presentViewController:animated:completion:));
+    if (m2) {
+        orig_presentViewController_IMP = method_getImplementation(m2);
+        method_setImplementation(m2, (IMP)hooked_presentViewController);
+        LOG("V Hook presentViewController:animated:completion:");
+    }
 }
 
 // =====================================================================
@@ -273,17 +375,36 @@ __attribute__((constructor))
 static void tweak_init(void) {
     LOG("补丁 dylib 已加载");
     LOG("目标: 阻止天问1+天问2 弹窗，创建悬浮球");
+    
+    // 初始化关键词列表
+    kBlockedKeywords = @[
+        @"网络异常",
+        @"请检查网络",
+        @"验证",
+        @"卡密",
+        @"card_no",
+        @"CardVerify",
+        @"KamiNetwork",
+        @"VacmNetwork"
+    ];
+    LOG("拦截关键词: %@", kBlockedKeywords);
 
-    // 立即 Hook 天问1 的弹窗函数
-    BOOL t1patched = patchTianwen1();
-    if (t1patched) {
-        LOG("天问1 Hook 成功");
-    } else {
-        LOG("警告: 天问1 验证管理器未找到");
-    }
+    // 立即 Hook UIAlertController（全局拦截）
+    hookUIAlertController();
+
+    // 延迟 0.5 秒后 Hook 天问1（等 dylib 加载）
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        BOOL t1patched = patchTianwen1();
+        if (t1patched) {
+            LOG("天问1 Hook 成功");
+        } else {
+            LOG("警告: 天问1 验证管理器未找到");
+        }
+    });
 
     // 启动延迟初始化（处理天问2 + 发送通知）
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         delayedInit();
     });
