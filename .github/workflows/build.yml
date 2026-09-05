@@ -1,10 +1,6 @@
 # ============================================================
-# GitHub Actions 编译工作流
-#
-# 使用方法：
-#   1. 把这个文件放到 GitHub 仓库的 .github/workflows/build.yml
-#   2. 推送代码到 main 分支
-#   3. 在 Actions 页面下载编译产物 TianwenTweak.dylib
+# GitHub Actions - 简化版编译工作流
+# 直接用 macOS 自带 clang 编译，不需要 Theos
 # ============================================================
 
 name: Build TianwenTweak
@@ -12,50 +8,42 @@ name: Build TianwenTweak
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-14  # macOS 14 (Sonoma) with Xcode 15
+    runs-on: macos-14
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Setup Theos
+    - name: Compile TianwenTweak.dylib
       run: |
-        # 安装 Theos
-        export THEOS=~/theos
-        if [ ! -d "$THEOS" ]; then
-          git clone --recursive https://github.com/theos/theos.git $THEOS
-        fi
-
-        # 下载 iOS SDK
-        if [ ! -d "$THEOS/sdks/iPhoneOS15.5.sdk" ]; then
-          curl -LO https://github.com/theos/sdks/archive/master.tar.gz
-          tar -xzf master.tar.gz -C $THEOS/sdks/
-          rm master.tar.gz
-        fi
-
-        echo "THEOS=$THEOS" >> $GITHUB_ENV
-
-    - name: Compile TianwenTweak
-      run: |
-        export THEOS=~/theos
-        cd tweak
-        make clean 2>/dev/null || true
-        make package FINALPACKAGE=1
-
-    - name: Find compiled dylib
-      run: |
-        find . -name "*.dylib" -type f
-        ls -la tweak/layout/usr/lib/ 2>/dev/null || echo "layout not found"
+        echo "=== 编译 TianwenTweak.dylib ==="
+        
+        # 用 macOS 自带 clang 直接编译
+        SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+        echo "iOS SDK: $SDK"
+        
+        clang -arch arm64 \
+          -isysroot "$SDK" \
+          -miphoneos-version-min=14.0 \
+          -dynamiclib \
+          -framework Foundation \
+          -framework UIKit \
+          -fobjc-arc \
+          -O2 \
+          -o TianwenTweak.dylib \
+          tweak/tweak.x
+        
+        echo "=== 编译完成 ==="
+        file TianwenTweak.dylib
+        ls -la TianwenTweak.dylib
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: TianwenTweak
-        path: |
-          tweak/layout/usr/lib/*.dylib
-          tweak/*.dylib
+        path: TianwenTweak.dylib
         retention-days: 30
