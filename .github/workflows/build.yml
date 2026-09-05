@@ -1,0 +1,61 @@
+# ============================================================
+# GitHub Actions 编译工作流
+#
+# 使用方法：
+#   1. 把这个文件放到 GitHub 仓库的 .github/workflows/build.yml
+#   2. 推送代码到 main 分支
+#   3. 在 Actions 页面下载编译产物 TianwenTweak.dylib
+# ============================================================
+
+name: Build TianwenTweak
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    runs-on: macos-14  # macOS 14 (Sonoma) with Xcode 15
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Theos
+      run: |
+        # 安装 Theos
+        export THEOS=~/theos
+        if [ ! -d "$THEOS" ]; then
+          git clone --recursive https://github.com/theos/theos.git $THEOS
+        fi
+
+        # 下载 iOS SDK
+        if [ ! -d "$THEOS/sdks/iPhoneOS15.5.sdk" ]; then
+          curl -LO https://github.com/theos/sdks/archive/master.tar.gz
+          tar -xzf master.tar.gz -C $THEOS/sdks/
+          rm master.tar.gz
+        fi
+
+        echo "THEOS=$THEOS" >> $GITHUB_ENV
+
+    - name: Compile TianwenTweak
+      run: |
+        export THEOS=~/theos
+        cd tweak
+        make clean 2>/dev/null || true
+        make package FINALPACKAGE=1
+
+    - name: Find compiled dylib
+      run: |
+        find . -name "*.dylib" -type f
+        ls -la tweak/layout/usr/lib/ 2>/dev/null || echo "layout not found"
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TianwenTweak
+        path: |
+          tweak/layout/usr/lib/*.dylib
+          tweak/*.dylib
+        retention-days: 30

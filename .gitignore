@@ -1,0 +1,11 @@
+# Ignore large binary files
+*.dylib
+*.ipa
+*.log
+*.bak
+
+# Ignore Freebuff project files
+.freebuff/
+
+# Keep tweak source and build config
+!tweak/

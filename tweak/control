@@ -1,0 +1,9 @@
+Package: com.patch.tianwen
+Name: TianwenTweak
+Depends: mobilesubstrate
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: 天问1 + 天问2 弹窗阻断 + 悬浮球创建补丁
+Maintainer: patch
+Author: patch
+Section: Tweaks
