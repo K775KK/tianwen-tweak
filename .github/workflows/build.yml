@@ -12,18 +12,21 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: List available SDKs
+    - name: Fix source file line endings
       run: |
-        echo "=== Xcode ==="
-        xcodebuild -version
-        echo "=== iOS SDKs ==="
+        sed -i '' 's/\r$//' tweak/tweak.x
+        head -3 tweak/tweak.x
+        echo "File size: $(wc -c < tweak/tweak.x) bytes"
+
+    - name: Show SDK info
+      run: |
         xcrun --sdk iphoneos --show-sdk-path
         xcrun --sdk iphoneos --show-sdk-version
 
     - name: Compile
       run: |
+        set -ex
         SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-        echo "SDK: $SDK"
         
         clang -arch arm64 \
           -isysroot "$SDK" \
@@ -35,7 +38,6 @@ jobs:
           -o TianwenTweak.dylib \
           tweak/tweak.x
         
-        echo "=== Result ==="
         file TianwenTweak.dylib
         ls -la TianwenTweak.dylib
 
